@@ -1,4 +1,4 @@
-"""PyBooks : présente le livre du jour et calcule le montant de la commande."""
+"""PyBooks : présente le livre du jour et applique les règles de la boutique."""
 
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -15,7 +15,8 @@ CENT = Decimal("0.01")
 title = "Le Petit Prince"
 author = "Antoine de Saint-Exupéry"
 isbn = "9782070612758"
-unit_price = Decimal("7.50")
+paper_price = Decimal("7.50")
+ebook_price = Decimal("5.99")
 stock = 7
 
 # --- Bannière ---
@@ -32,31 +33,62 @@ print(f"- Expédition sous {SHIPPING_DELAY_HOURS} heures")
 print()
 
 # --- Fiche du livre ---
-unit_price_incl_vat = (unit_price * (1 + BOOK_VAT_RATE)).quantize(
-    CENT, rounding=ROUND_HALF_UP
-)
 print("--- Livre du jour ---")
 print(f"Titre    : {title}")
 print(f"Auteur   : {author}")
 print(f"ISBN     : {isbn}")
-print(f"Prix HT  : {unit_price:.2f} €")
-print(f"Prix TTC : {unit_price_incl_vat:.2f} €")
-print(f"En stock : {stock} exemplaire(s)")
+print(f"Papier   : {paper_price:.2f} € HT")
+print(f"Ebook    : {ebook_price:.2f} € HT")
+if stock > 0:
+    print(f"En stock : {stock} exemplaire(s)")
+else:
+    print("En stock : rupture (l'ebook reste disponible)")
 print()
 
-# --- Commande ---
-quantity = int(input("Combien d'exemplaires souhaitez-vous ? "))
+# --- Choix du format ---
+format_choice = input("Format : (p)apier ou (n)umérique ? ")
+is_valid_format = True
+is_ebook = False
+match format_choice:
+    case "p" | "P":
+        is_ebook = False
+    case "n" | "N":
+        is_ebook = True
+    case _:
+        is_valid_format = False
 
-amount_excl_vat = unit_price * quantity
-vat = (amount_excl_vat * BOOK_VAT_RATE).quantize(CENT, rounding=ROUND_HALF_UP)
-amount_incl_vat = amount_excl_vat + vat
-# Pour l'instant, les frais de port sont toujours facturés (gratuité : étape 03).
-total_to_pay = amount_incl_vat + SHIPPING_FEE
+if not is_valid_format:
+    print(f"Format inconnu : {format_choice!r}. Commande annulée.")
+else:
+    quantity = int(input("Combien d'exemplaires souhaitez-vous ? "))
 
-print()
-print("--- Votre commande ---")
-print(f"Montant HT    : {amount_excl_vat:.2f} €")
-print(f"TVA ({BOOK_VAT_RATE * 100:.0f} %)     : {vat:.2f} €")
-print(f"Montant TTC   : {amount_incl_vat:.2f} €")
-print(f"Frais de port : {SHIPPING_FEE:.2f} €")
-print(f"Total à payer : {total_to_pay:.2f} €")
+    if quantity <= 0:
+        print("La quantité doit être au moins égale à 1. Commande annulée.")
+    elif not is_ebook and quantity > stock:
+        print(f"Stock insuffisant : {stock} exemplaire(s) disponible(s).")
+    else:
+        unit_price = ebook_price if is_ebook else paper_price
+        amount_excl_vat = unit_price * quantity
+        vat = (amount_excl_vat * BOOK_VAT_RATE).quantize(CENT, rounding=ROUND_HALF_UP)
+        amount_incl_vat = amount_excl_vat + vat
+
+        if is_ebook:
+            shipping = Decimal(0)
+            shipping_label = "sans objet (téléchargement)"
+        elif amount_incl_vat >= FREE_SHIPPING_THRESHOLD:
+            shipping = Decimal(0)
+            shipping_label = "offerts"
+        else:
+            shipping = SHIPPING_FEE
+            shipping_label = f"{SHIPPING_FEE:.2f} €"
+
+        total_to_pay = amount_incl_vat + shipping
+
+        print()
+        print("--- Votre commande ---")
+        print(f"Format        : {'numérique' if is_ebook else 'papier'}")
+        print(f"Montant HT    : {amount_excl_vat:.2f} €")
+        print(f"TVA ({BOOK_VAT_RATE * 100:.0f} %)     : {vat:.2f} €")
+        print(f"Montant TTC   : {amount_incl_vat:.2f} €")
+        print(f"Frais de port : {shipping_label}")
+        print(f"Total à payer : {total_to_pay:.2f} €")
