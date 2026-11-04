@@ -1,4 +1,4 @@
-"""PyBooks : le menu de la librairie, de l'accueil jusqu'à la sortie."""
+"""PyBooks : menu de la librairie, vérification d'ISBN et ticket de caisse."""
 
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -10,6 +10,17 @@ SHIPPING_DELAY_HOURS = 48
 BOOK_VAT_RATE = Decimal("0.06")
 SHIPPING_FEE = Decimal("4.90")
 CENT = Decimal("0.01")
+
+# --- Constantes de mise en forme ---
+TICKET_WIDTH = 40
+LABEL_WIDTH = 28
+VALUE_WIDTH = TICKET_WIDTH - LABEL_WIDTH
+AMOUNT_WIDTH = VALUE_WIDTH - 2  # place laissée pour « € »
+SEPARATOR = "-" * TICKET_WIDTH
+
+# --- Constantes ISBN-13 ---
+ISBN_LENGTH = 13
+ISBN_ODD_POSITION_WEIGHT = 3
 
 # --- Livre du jour ---
 title = "Le Petit Prince"
@@ -24,9 +35,9 @@ orders_count = 0
 session_total = Decimal(0)
 
 # --- Bannière ---
-print("========================================")
-print(f"       {SHOP_NAME} - Librairie en ligne")
-print("========================================")
+print("=" * TICKET_WIDTH)
+print(f"{SHOP_NAME + ' - Librairie en ligne':^{TICKET_WIDTH}}")
+print("=" * TICKET_WIDTH)
 print("Bienvenue !")
 print("Livres, ebooks et cadeaux pour lecteurs curieux.")
 print()
@@ -42,8 +53,9 @@ while True:
     print("1. Voir le livre du jour")
     print("2. Commander")
     print("3. Récapitulatif de la session")
+    print("4. Vérifier un ISBN")
     print("Q. Quitter")
-    choice = input("Votre choix : ")
+    choice = input("Votre choix : ").strip().lower()
 
     match choice:
         case "1":
@@ -60,15 +72,14 @@ while True:
                 print("En stock : rupture (l'ebook reste disponible)")
 
         case "2":
-            # Choix du format, redemandé tant qu'il n'est pas valide.
             is_ebook = False
             while True:
                 format_choice = input("Format : (p)apier ou (n)umérique ? ")
-                match format_choice:
-                    case "p" | "P":
+                match format_choice.strip().lower():
+                    case "p":
                         is_ebook = False
                         break
-                    case "n" | "N":
+                    case "n":
                         is_ebook = True
                         break
                     case _:
@@ -78,7 +89,6 @@ while True:
                 print("Rupture de stock : choisissez la version numérique.")
                 continue
 
-            # Quantité, redemandée tant qu'elle n'est pas valide.
             quantity = int(input("Combien d'exemplaires souhaitez-vous ? "))
             while quantity < 1 or (not is_ebook and quantity > stock):
                 if quantity < 1:
@@ -96,7 +106,7 @@ while True:
 
             if is_ebook:
                 shipping = Decimal(0)
-                shipping_label = "sans objet (téléchargement)"
+                shipping_label = "sans objet"
             elif amount_incl_vat >= FREE_SHIPPING_THRESHOLD:
                 shipping = Decimal(0)
                 shipping_label = "offerts"
@@ -106,16 +116,28 @@ while True:
 
             total_to_pay = amount_incl_vat + shipping
 
+            # --- Ticket de caisse ---
+            item_label = f"{title} ({'ebook' if is_ebook else 'papier'})"
             print()
-            print("--- Votre commande ---")
-            print(f"Format        : {'numérique' if is_ebook else 'papier'}")
-            print(f"Montant HT    : {amount_excl_vat:.2f} €")
-            print(f"TVA ({BOOK_VAT_RATE * 100:.0f} %)     : {vat:.2f} €")
-            print(f"Montant TTC   : {amount_incl_vat:.2f} €")
-            print(f"Frais de port : {shipping_label}")
-            print(f"Total à payer : {total_to_pay:.2f} €")
+            print(SEPARATOR)
+            item_detail = f"{quantity} x {unit_price:.2f} €"
+            print(f"{item_label:<{LABEL_WIDTH}}{item_detail:>{VALUE_WIDTH}}")
+            print(SEPARATOR)
+            print(
+                f"{'Montant HT':<{LABEL_WIDTH}}{amount_excl_vat:>{AMOUNT_WIDTH}.2f} €"
+            )
+            vat_label = f"TVA ({BOOK_VAT_RATE * 100:.0f} %)"
+            print(f"{vat_label:<{LABEL_WIDTH}}{vat:>{AMOUNT_WIDTH}.2f} €")
+            print(
+                f"{'Montant TTC':<{LABEL_WIDTH}}{amount_incl_vat:>{AMOUNT_WIDTH}.2f} €"
+            )
+            print(f"{'Frais de port':<{LABEL_WIDTH}}{shipping_label:>{VALUE_WIDTH}}")
+            print(SEPARATOR)
+            print(
+                f"{'TOTAL À PAYER':<{LABEL_WIDTH}}{total_to_pay:>{AMOUNT_WIDTH}.2f} €"
+            )
+            print(SEPARATOR)
 
-            # Mise à jour du stock et des statistiques de la session.
             if not is_ebook:
                 stock -= quantity
             orders_count += 1
@@ -128,7 +150,33 @@ while True:
             print(f"Montant total     : {session_total:.2f} €")
             print(f"Stock restant     : {stock} exemplaire(s)")
 
-        case "q" | "Q":
+        case "4":
+            raw_isbn = input("ISBN à vérifier : ")
+            candidate = raw_isbn.strip().replace("-", "").replace(" ", "")
+
+            if len(candidate) != ISBN_LENGTH:
+                print(
+                    f"Un ISBN-13 compte {ISBN_LENGTH} chiffres, pas {len(candidate)}."
+                )
+            elif not candidate.isdecimal():
+                print("Un ISBN-13 ne contient que des chiffres (et des tirets).")
+            else:
+                # Pondérations 1, 3, 1, 3… sur les 12 premiers chiffres.
+                weighted_sum = 0
+                for index in range(ISBN_LENGTH - 1):
+                    weight = 1 if index % 2 == 0 else ISBN_ODD_POSITION_WEIGHT
+                    weighted_sum += int(candidate[index]) * weight
+                expected_check = (10 - weighted_sum % 10) % 10
+
+                if int(candidate[-1]) == expected_check:
+                    print(f"ISBN {candidate} valide.")
+                else:
+                    print(
+                        f"ISBN {candidate} invalide : la clé de contrôle "
+                        f"devrait être {expected_check}."
+                    )
+
+        case "q":
             break
 
         case _:
